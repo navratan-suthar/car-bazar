@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Car Bazar - Market</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="Car Bazar - Buy and sell cars. Recent cars and full catalog." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🚗</text></svg>">
+  <style>
+    /* Custom tweaks on top of Tailwind */
+    .nav-active { @apply text-white bg-blue-600; }
+    .nav-inactive { @apply text-blue-600 hover:bg-blue-50; }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-800">
+  <!-- Header -->
+  <header class="bg-white shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 py-4 items-center">
+        <!-- Profile Left -->
+        <div id="ownerLeft" class="flex items-center gap-3">
+          <img id="ownerLeftImg" src="shiva.jpg" alt="Owner 1" class="w-16 h-16 sm:w-18 sm:h-18 rounded-full object-cover ring-2 ring-blue-600" />
+          <div>
+            <p id="ownerLeftName" class="font-semibold text-gray-900">SHIVA Suthar</p>
+            <p class="text-sm text-gray-600">Contact: <a id="ownerLeftContact" href="tel:+919876543210" class="text-blue-600">+91 98765 43210</a></p>
+          </div>
+        </div>
+
+        <!-- Market Address Center -->
+        <div class="text-center">
+          <h1 id="marketTitle" class="text-xl md:text-2xl font-bold text-gray-900">APNO Car Bazar - Main Market</h1>
+          <p id="marketAddress" class="text-sm text-gray-600">BIKANER Road, Panch bhai chok, Near Maharana partap school</p>
+        </div>
+
+        <!-- Profile Right -->
+        <div id="ownerRight" class="flex items-center justify-start md:justify-end gap-3">
+          <img id="ownerRightImg" src="bhagu.jpg" alt="Owner 2" class="w-16 h-16 sm:w-18 sm:h-18 rounded-full object-cover ring-2 ring-blue-600" />
+          <div class="text-right">
+            <p id="ownerRightName" class="font-semibold text-gray-900">Bhagu Suthar</p>
+            <p class="text-sm text-gray-600">Contact: <a id="ownerRightContact" href="tel:+919012345678" class="text-blue-600">+91 90123 45678</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav Bar -->
+    <nav class="border-t border-gray-200 bg-white">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 py-2">
+          <button id="tabHome" class="px-4 py-2 rounded-md text-sm font-medium nav-active w-full sm:w-auto" aria-current="page">Home</button>
+          <button id="tabAll" class="px-4 py-2 rounded-md text-sm font-medium nav-inactive w-full sm:w-auto">All Cars</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Home Section: Recent Cars -->
+    <section id="sectionHome" class="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- Cars will be loaded dynamically -->
+    </section>
+
+    <!-- All Cars Section: Full Inventory -->
+    <section id="sectionAll" class="hidden grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- Cars will be loaded dynamically -->
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-10 bg-white border-t border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+        <!-- Owner 1 -->
+        <div id="footerOwnerLeft" class="flex items-center gap-4">
+          <img id="footerOwnerLeftImg" loading="lazy" src="shiva.jpg" alt="Owner 1" class="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover ring-2 ring-blue-600" />
+          <div>
+            <p class="text-sm text-gray-600">Owner Details</p>
+            <p id="footerOwnerLeftName" class="text-lg font-semibold">SHIVA Suthar</p>
+            <p id="footerOwnerLeftAddress" class="text-sm text-gray-600">Address: PATLISHAR BARA </p>
+            <p class="text-sm text-gray-600">Contact: <a id="footerOwnerLeftContact" href="tel:+919876543210" class="text-blue-600">+91 98765 43210</a></p>
+          </div>
+        </div>
+
+        <!-- Market Info Center -->
+        <div class="text-center">
+          <h3 id="footerMarketTitle" class="text-lg font-bold text-gray-900">Car Bazar - Main Market</h3>
+          <p id="footerMarketAddress" class="text-sm text-gray-600">BIKANER Road, Panch bhai chok, Near Maharana partap school</p>
+          <p id="footerMarketHours" class="text-sm text-gray-500 mt-2">Open 10:00 AM - 8:00 PM, Monday to Sunday</p>
+        </div>
+
+        <!-- Owner 2 -->
+        <div id="footerOwnerRight" class="flex items-center justify-start md:justify-end gap-4">
+          <img id="footerOwnerRightImg" loading="lazy" src="bhagu.jpg" alt="Owner 2" class="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover ring-2 ring-blue-600" />
+          <div class="text-right">
+            <p class="text-sm text-gray-600">Owner Details</p>
+            <p id="footerOwnerRightName" class="text-lg font-semibold">Bhagu Suthar</p>
+            <p id="footerOwnerRightAddress" class="text-sm text-gray-600">Address: PATLISHAR BARA</p>
+            <p class="text-sm text-gray-600">Contact: <a id="footerOwnerRightContact" href="tel:+919012345678" class="text-blue-600">+91 90123 45678</a></p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Copyright -->
+      <div class="mt-6 pt-4 border-t border-gray-200 text-center">
+        <p class="text-sm text-gray-500">© <span id="year"></span> Car Bazar. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- JS: API Integration and tab switching -->
+  <script>
+    const API_BASE = window.location.origin;
+    const tabHome = document.getElementById('tabHome');
+    const tabAll = document.getElementById('tabAll');
+    const sectionHome = document.getElementById('sectionHome');
+    const sectionAll = document.getElementById('sectionAll');
+    let instagramHandlerAdded = false;
+
+    // Helper function to get image URL
+    function getImageUrl(imagePath) {
+      if (!imagePath) return '';
+      // If it's already a full URL (starts with http), return as is
+      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        return imagePath;
+      }
+      // If it starts with /, it's already an absolute path
+      if (imagePath.startsWith('/')) {
+        return imagePath;
+      }
+      // Otherwise, it's a relative path
+      return imagePath;
+    }
+
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Load all data on page load
+    async function loadData() {
+      try {
+        await Promise.all([
+          loadMarketInfo(),
+          loadOwners(),
+          loadCars('home'),
+          loadCars('all')
+        ]);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      }
+    }
+
+    // Load market info
+    async function loadMarketInfo() {
+      try {
+        const response = await fetch(`${API_BASE}/api/market-info`);
+        if (!response.ok) throw new Error('Failed to fetch market info');
+        const data = await response.json();
+        if (data) {
+          document.getElementById('marketTitle').textContent = data.title || '';
+          document.getElementById('marketAddress').textContent = data.address || '';
+          document.getElementById('footerMarketTitle').textContent = data.title || '';
+          document.getElementById('footerMarketAddress').textContent = data.address || '';
+          document.getElementById('footerMarketHours').textContent = data.hours || '';
+        }
+      } catch (error) {
+        console.error('Error loading market info:', error);
+      }
+    }
+
+    // Load owners
+    async function loadOwners() {
+      try {
+        const response = await fetch(`${API_BASE}/api/owners`);
+        if (!response.ok) throw new Error('Failed to fetch owners');
+        const owners = await response.json();
+        
+        const leftOwner = owners.find(o => o.position === 'left');
+        const rightOwner = owners.find(o => o.position === 'right');
+
+        if (leftOwner) {
+          const leftImgUrl = getImageUrl(leftOwner.image_path || 'shiva.jpg');
+          document.getElementById('ownerLeftImg').src = leftImgUrl;
+          document.getElementById('ownerLeftImg').onerror = function() {
+            this.src = 'shiva.jpg';
+          };
+          document.getElementById('ownerLeftName').textContent = leftOwner.name;
+          document.getElementById('ownerLeftContact').textContent = leftOwner.contact;
+          document.getElementById('ownerLeftContact').href = `tel:${leftOwner.contact.replace(/\s/g, '')}`;
+          
+          document.getElementById('footerOwnerLeftImg').src = leftImgUrl;
+          document.getElementById('footerOwnerLeftImg').onerror = function() {
+            this.src = 'shiva.jpg';
+          };
+          document.getElementById('footerOwnerLeftName').textContent = leftOwner.name;
+          document.getElementById('footerOwnerLeftAddress').textContent = `Address: ${leftOwner.address || ''}`;
+          document.getElementById('footerOwnerLeftContact').textContent = leftOwner.contact;
+          document.getElementById('footerOwnerLeftContact').href = `tel:${leftOwner.contact.replace(/\s/g, '')}`;
+
+          // Set up Instagram link for Shiva (only once)
+          if (!instagramHandlerAdded && leftOwner.name.toUpperCase().includes('SHIVA')) {
+            const ownerLeftEl = document.getElementById('ownerLeft');
+            ownerLeftEl.style.cursor = 'pointer';
+            ownerLeftEl.addEventListener('click', function() {
+              window.location.href = "https://www.instagram.com/shiva_suthar___/";
+            });
+            instagramHandlerAdded = true;
+          }
+        }
+
+        if (rightOwner) {
+          const rightImgUrl = getImageUrl(rightOwner.image_path || 'bhagu.jpg');
+          document.getElementById('ownerRightImg').src = rightImgUrl;
+          document.getElementById('ownerRightImg').onerror = function() {
+            this.src = 'bhagu.jpg';
+          };
+          document.getElementById('ownerRightName').textContent = rightOwner.name;
+          document.getElementById('ownerRightContact').textContent = rightOwner.contact;
+          document.getElementById('ownerRightContact').href = `tel:${rightOwner.contact.replace(/\s/g, '')}`;
+          
+          document.getElementById('footerOwnerRightImg').src = rightImgUrl;
+          document.getElementById('footerOwnerRightImg').onerror = function() {
+            this.src = 'bhagu.jpg';
+          };
+          document.getElementById('footerOwnerRightName').textContent = rightOwner.name;
+          document.getElementById('footerOwnerRightAddress').textContent = `Address: ${rightOwner.address || ''}`;
+          document.getElementById('footerOwnerRightContact').textContent = rightOwner.contact;
+          document.getElementById('footerOwnerRightContact').href = `tel:${rightOwner.contact.replace(/\s/g, '')}`;
+        }
+      } catch (error) {
+        console.error('Error loading owners:', error);
+      }
+    }
+
+    // Load cars
+    async function loadCars(section) {
+      try {
+        const response = await fetch(`${API_BASE}/api/cars?section=${section}`);
+        if (!response.ok) throw new Error(`Failed to fetch ${section} cars`);
+        const cars = await response.json();
+        const container = section === 'home' ? sectionHome : sectionAll;
+        
+        if (!cars || cars.length === 0) {
+          container.innerHTML = '<p class="text-center text-gray-500 col-span-full py-8">No cars available in this section.</p>';
+          return;
+        }
+        
+        container.innerHTML = cars.map(car => {
+          const imageUrl = getImageUrl(car.image_path || '');
+          const title = escapeHtml(car.title || '');
+          const description = escapeHtml(car.description || '');
+          const price = escapeHtml(car.price || '');
+          const postedDate = escapeHtml(car.posted_date || '');
+          
+          return `
+            <article class="bg-white rounded-lg shadow-sm overflow-hidden">
+              <img loading="lazy" class="w-full h-40 sm:h-44 md:h-48 lg:h-52 object-cover" src="${imageUrl}" alt="${title}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'300\'%3E%3Crect fill=\'%23e5e7eb\' width=\'400\' height=\'300\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%239ca3af\' font-family=\'Arial\' font-size=\'18\'%3EImage not available%3C/text%3E%3C/svg%3E'" />
+              <div class="p-4">
+                <h3 class="text-lg font-semibold">${title}</h3>
+                ${description ? `<p class="text-sm text-gray-600 mt-1">${description}</p>` : ''}
+                <p class="text-blue-600 font-semibold mt-2">${price}</p>
+                ${postedDate ? `<p class="text-xs text-gray-500 mt-2">Posted: ${postedDate}</p>` : ''}
+              </div>
+            </article>
+          `;
+        }).join('');
+      } catch (error) {
+        console.error(`Error loading ${section} cars:`, error);
+        const container = section === 'home' ? sectionHome : sectionAll;
+        container.innerHTML = '<p class="text-center text-red-500 col-span-full py-8">Failed to load cars. Please try again later.</p>';
+      }
+    }
+
+    function activateTab(tab) {
+      if (tab === 'home') {
+        sectionHome.classList.remove('hidden');
+        sectionAll.classList.add('hidden');
+        tabHome.classList.add('nav-active');
+        tabHome.classList.remove('nav-inactive');
+        tabAll.classList.add('nav-inactive');
+        tabAll.classList.remove('nav-active');
+      } else {
+        sectionHome.classList.add('hidden');
+        sectionAll.classList.remove('hidden');
+        tabAll.classList.add('nav-active');
+        tabAll.classList.remove('nav-inactive');
+        tabHome.classList.add('nav-inactive');
+        tabHome.classList.remove('nav-active');
+      }
+    }
+
+    // Initialize event listeners
+    tabHome.addEventListener('click', () => activateTab('home'));
+    tabAll.addEventListener('click', () => activateTab('all'));
+    document.getElementById('year').textContent = new Date().getFullYear();
+    
+    // Initialize data loading when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadData);
+    } else {
+      loadData();
+    }
+  </script>
+</body>
+</html>
+
+

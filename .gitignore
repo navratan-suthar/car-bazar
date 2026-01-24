@@ -1,0 +1,5 @@
+node_modules/
+car_bazar.db
+uploads/
+.env
+*.log
