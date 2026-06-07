@@ -3,12 +3,21 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
+
+// Cloudinary config
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Middleware
@@ -147,22 +156,18 @@ app.use(async (req, res, next) => {
   }
 });
 
-// File upload — use /tmp on Vercel (serverless), local uploads/ otherwise
-const UPLOAD_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, 'uploads');
-if (!process.env.VERCEL && !fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+// File upload — Cloudinary (persistent, works on Vercel)
+const cloudinaryStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'car-bazar',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+  },
 });
 
 const upload = multer({
-  storage: storage,
+  storage: cloudinaryStorage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -172,6 +177,21 @@ const upload = multer({
     cb(new Error('Only image files are allowed!'));
   }
 });
+
+// Helper: delete image from Cloudinary by its stored URL
+async function deleteCloudinaryImage(imageUrl) {
+  try {
+    if (!imageUrl || imageUrl.startsWith('http') === false) return;
+    if (!imageUrl.includes('cloudinary.com')) return;
+    // Extract public_id from URL: folder/filename (without extension)
+    const matches = imageUrl.match(/\/car-bazar\/([^.]+)/);
+    if (matches && matches[1]) {
+      await cloudinary.uploader.destroy(`car-bazar/${matches[1]}`);
+    }
+  } catch (err) {
+    console.error('Cloudinary delete error:', err);
+  }
+}
 
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
@@ -282,9 +302,13 @@ app.put('/api/admin/owners/:id', authenticateToken, upload.single('image'), asyn
   const { name, contact, address } = req.body;
   try {
     if (req.file) {
+      // Delete old Cloudinary image
+      const old = await pool.query('SELECT image_path FROM owners WHERE id = $1', [req.params.id]);
+      if (old.rows[0]) await deleteCloudinaryImage(old.rows[0].image_path);
+
       await pool.query(
         'UPDATE owners SET name = $1, contact = $2, address = $3, image_path = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5',
-        [name, contact, address, '/uploads/' + req.file.filename, req.params.id]
+        [name, contact, address, req.file.path, req.params.id]
       );
     } else {
       await pool.query(
@@ -313,7 +337,8 @@ app.get('/api/admin/cars', authenticateToken, async (req, res) => {
 
 app.post('/api/admin/cars', authenticateToken, upload.single('image'), async (req, res) => {
   const { title, description, price, posted_date, section } = req.body;
-  const image_path = req.file ? '/uploads/' + req.file.filename : null;
+  // req.file.path is the Cloudinary URL when using CloudinaryStorage
+  const image_path = req.file ? req.file.path : null;
   if (!title || !price) return res.status(400).json({ error: 'Title and price are required' });
   try {
     const result = await pool.query(
@@ -331,9 +356,13 @@ app.put('/api/admin/cars/:id', authenticateToken, upload.single('image'), async 
   const { title, description, price, posted_date, section } = req.body;
   try {
     if (req.file) {
+      // Delete old Cloudinary image
+      const old = await pool.query('SELECT image_path FROM cars WHERE id = $1', [req.params.id]);
+      if (old.rows[0]) await deleteCloudinaryImage(old.rows[0].image_path);
+
       await pool.query(
         'UPDATE cars SET title = $1, description = $2, price = $3, posted_date = $4, section = $5, image_path = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7',
-        [title, description || '', price, posted_date, section || 'home', '/uploads/' + req.file.filename, req.params.id]
+        [title, description || '', price, posted_date, section || 'home', req.file.path, req.params.id]
       );
     } else {
       await pool.query(
@@ -350,6 +379,10 @@ app.put('/api/admin/cars/:id', authenticateToken, upload.single('image'), async 
 
 app.delete('/api/admin/cars/:id', authenticateToken, async (req, res) => {
   try {
+    // Delete Cloudinary image first
+    const carResult = await pool.query('SELECT image_path FROM cars WHERE id = $1', [req.params.id]);
+    if (carResult.rows[0]) await deleteCloudinaryImage(carResult.rows[0].image_path);
+
     await pool.query('DELETE FROM cars WHERE id = $1', [req.params.id]);
     res.json({ message: 'Car deleted successfully' });
   } catch (err) {
