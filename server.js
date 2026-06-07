@@ -18,12 +18,18 @@ cloudinary.config({
   api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// Warn early if Cloudinary isn't configured
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+  console.warn('[WARNING] Cloudinary env vars not set — image uploads will fail.');
+}
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));  // serve index.html, admin.html, images from root
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // PostgreSQL connection pool (uses DATABASE_URL from env)
 const pool = new Pool({
@@ -181,9 +187,7 @@ const upload = multer({
 // Helper: delete image from Cloudinary by its stored URL
 async function deleteCloudinaryImage(imageUrl) {
   try {
-    if (!imageUrl || imageUrl.startsWith('http') === false) return;
-    if (!imageUrl.includes('cloudinary.com')) return;
-    // Extract public_id from URL: folder/filename (without extension)
+    if (!imageUrl || !imageUrl.includes('cloudinary.com')) return;
     const matches = imageUrl.match(/\/car-bazar\/([^.]+)/);
     if (matches && matches[1]) {
       await cloudinary.uploader.destroy(`car-bazar/${matches[1]}`);
@@ -192,6 +196,21 @@ async function deleteCloudinaryImage(imageUrl) {
     console.error('Cloudinary delete error:', err);
   }
 }
+
+// Safe upload wrapper — catches Cloudinary/multer errors and returns JSON
+// instead of crashing the serverless function (which causes "Connection error")
+const handleUpload = (field) => (req, res, next) => {
+  upload.single(field)(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ error: `Upload error: ${err.message}` });
+    }
+    console.error('Cloudinary upload error:', err);
+    return res.status(500).json({
+      error: err.message || 'Image upload failed. Ensure Cloudinary env vars are set on Vercel.'
+    });
+  });
+};
 
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
@@ -298,7 +317,7 @@ app.get('/api/admin/owners', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/admin/owners/:id', authenticateToken, upload.single('image'), async (req, res) => {
+app.put('/api/admin/owners/:id', authenticateToken, handleUpload('image'), async (req, res) => {
   const { name, contact, address } = req.body;
   try {
     if (req.file) {
@@ -335,7 +354,7 @@ app.get('/api/admin/cars', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/admin/cars', authenticateToken, upload.single('image'), async (req, res) => {
+app.post('/api/admin/cars', authenticateToken, handleUpload('image'), async (req, res) => {
   const { title, description, price, posted_date, section } = req.body;
   // req.file.path is the Cloudinary URL when using CloudinaryStorage
   const image_path = req.file ? req.file.path : null;
@@ -352,7 +371,7 @@ app.post('/api/admin/cars', authenticateToken, upload.single('image'), async (re
   }
 });
 
-app.put('/api/admin/cars/:id', authenticateToken, upload.single('image'), async (req, res) => {
+app.put('/api/admin/cars/:id', authenticateToken, handleUpload('image'), async (req, res) => {
   const { title, description, price, posted_date, section } = req.body;
   try {
     if (req.file) {
