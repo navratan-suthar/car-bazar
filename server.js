@@ -1,5 +1,5 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
@@ -24,97 +24,101 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Database setup
-const db = new sqlite3.Database('car_bazar.db');
+// PostgreSQL connection pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
-// Initialize database
-db.serialize(() => {
-  // Users table
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+// Initialize database tables and seed data
+async function initDB() {
+  try {
+    // Users table
+    await pool.query(`CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-  // Owners table
-  db.run(`CREATE TABLE IF NOT EXISTS owners (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    contact TEXT NOT NULL,
-    address TEXT,
-    image_path TEXT,
-    position TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+    // Owners table
+    await pool.query(`CREATE TABLE IF NOT EXISTS owners (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      contact TEXT NOT NULL,
+      address TEXT,
+      image_path TEXT,
+      position TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-  // Market info table
-  db.run(`CREATE TABLE IF NOT EXISTS market_info (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    address TEXT NOT NULL,
-    hours TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+    // Market info table
+    await pool.query(`CREATE TABLE IF NOT EXISTS market_info (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      address TEXT NOT NULL,
+      hours TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-  // Cars table
-  db.run(`CREATE TABLE IF NOT EXISTS cars (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT,
-    price TEXT NOT NULL,
-    image_path TEXT,
-    posted_date TEXT,
-    section TEXT DEFAULT 'home',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+    // Cars table
+    await pool.query(`CREATE TABLE IF NOT EXISTS cars (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      price TEXT NOT NULL,
+      image_path TEXT,
+      posted_date TEXT,
+      section TEXT DEFAULT 'home',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-  // Initialize default superuser
-  const defaultUsername = 'navratan suthar';
-  const defaultPassword = 'Ns@1212ns';
-  
-  db.get('SELECT * FROM users WHERE username = ?', [defaultUsername], (err, row) => {
-    if (!row) {
+    // Seed default superuser
+    const defaultUsername = 'navratan suthar';
+    const defaultPassword = 'Ns@1212ns';
+    const userResult = await pool.query('SELECT * FROM users WHERE username = $1', [defaultUsername]);
+    if (userResult.rows.length === 0) {
       const hashedPassword = bcrypt.hashSync(defaultPassword, 10);
-      db.run('INSERT INTO users (username, password) VALUES (?, ?)', [defaultUsername, hashedPassword], (err) => {
-        if (err) {
-          console.error('Error creating default user:', err);
-        } else {
-          console.log('Default superuser created');
-        }
-      });
+      await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [defaultUsername, hashedPassword]);
+      console.log('Default superuser created');
     }
-  });
 
-  // Initialize default market info
-  db.get('SELECT * FROM market_info WHERE id = 1', (err, row) => {
-    if (!row) {
-      db.run(`INSERT INTO market_info (id, title, address, hours) 
-              VALUES (1, 'APNO Car Bazar - Main Market', 'BIKANER Road, Panch bhai chok, Near Maharana partap school', 'Open 10:00 AM - 8:00 PM, Monday to Sunday')`);
+    // Seed default market info
+    const marketResult = await pool.query('SELECT * FROM market_info LIMIT 1');
+    if (marketResult.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO market_info (title, address, hours) VALUES ($1, $2, $3)`,
+        [
+          'APNO Car Bazar - Main Market',
+          'BIKANER Road, Panch bhai chok, Near Maharana partap school',
+          'Open 10:00 AM - 8:00 PM, Monday to Sunday'
+        ]
+      );
     }
-  });
 
-  // Initialize default owners
-  db.get('SELECT * FROM owners WHERE position = ?', ['left'], (err, row) => {
-    if (!row) {
-      db.run(`INSERT INTO owners (name, contact, address, image_path, position) 
-              VALUES ('SHIVA Suthar', '+919876543210', 'PATLISHAR BARA', 'shiva.jpg', 'left')`);
+    // Seed default left owner
+    const leftOwner = await pool.query('SELECT * FROM owners WHERE position = $1', ['left']);
+    if (leftOwner.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO owners (name, contact, address, image_path, position) VALUES ($1, $2, $3, $4, $5)`,
+        ['SHIVA Suthar', '+919876543210', 'PATLISHAR BARA', 'shiva.jpg', 'left']
+      );
     }
-  });
 
-  db.get('SELECT * FROM owners WHERE position = ?', ['right'], (err, row) => {
-    if (!row) {
-      db.run(`INSERT INTO owners (name, contact, address, image_path, position) 
-              VALUES ('Bhagu Suthar', '+919012345678', 'PATLISHAR BARA', 'bhagu.jpg', 'right')`);
+    // Seed default right owner
+    const rightOwner = await pool.query('SELECT * FROM owners WHERE position = $1', ['right']);
+    if (rightOwner.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO owners (name, contact, address, image_path, position) VALUES ($1, $2, $3, $4, $5)`,
+        ['Bhagu Suthar', '+919012345678', 'PATLISHAR BARA', 'bhagu.jpg', 'right']
+      );
     }
-  });
 
-  // Initialize default cars
-  db.get('SELECT COUNT(*) as count FROM cars', (err, row) => {
-    if (row && row.count === 0) {
+    // Seed default cars
+    const carsCount = await pool.query('SELECT COUNT(*) AS count FROM cars');
+    if (parseInt(carsCount.rows[0].count) === 0) {
       const defaultCars = [
         { title: 'i20 asta', description: 'Diesel • new tyre • Single Owner', price: '₹ 4.5 Lakh', image_path: 'iata.png', posted_date: '2 days ago', section: 'home' },
         { title: 'Maruti Swift 2019', description: 'Diesel • new tyre • Second Owner', price: '₹ 3.2 Lakh', image_path: 'honda.png', posted_date: '5 days ago', section: 'home' },
@@ -127,14 +131,20 @@ db.serialize(() => {
         { title: 'Kia Seltos 2021', description: 'Petrol • 19,000 km • Single Owner', price: '₹ 13.8 Lakh', image_path: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?q=80&w=1200&auto=format&fit=crop', posted_date: '2 days ago', section: 'all' }
       ];
 
-      const stmt = db.prepare('INSERT INTO cars (title, description, price, image_path, posted_date, section) VALUES (?, ?, ?, ?, ?, ?)');
-      defaultCars.forEach(car => {
-        stmt.run(car.title, car.description, car.price, car.image_path, car.posted_date, car.section);
-      });
-      stmt.finalize();
+      for (const car of defaultCars) {
+        await pool.query(
+          'INSERT INTO cars (title, description, price, image_path, posted_date, section) VALUES ($1, $2, $3, $4, $5, $6)',
+          [car.title, car.description, car.price, car.image_path, car.posted_date, car.section]
+        );
+      }
     }
-  });
-});
+
+    console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Database initialization error:', err);
+    process.exit(1);
+  }
+}
 
 // File upload configuration
 const storage = multer.diskStorage({
@@ -147,14 +157,13 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-    
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -181,7 +190,8 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Auth routes
+// ─── Auth Routes ─────────────────────────────────────────────────────────────
+
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -189,10 +199,9 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Username and password required' });
   }
 
-  db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -205,128 +214,138 @@ app.post('/api/auth/login', async (req, res) => {
 
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ token, username: user.username });
-  });
-});
-
-// Public API routes
-app.get('/api/market-info', (req, res) => {
-  db.get('SELECT * FROM market_info WHERE id = 1', (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(row || {});
-  });
-});
-
-app.get('/api/owners', (req, res) => {
-  db.all('SELECT * FROM owners ORDER BY position', (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(rows);
-  });
-});
-
-app.get('/api/cars', (req, res) => {
-  const { section } = req.query;
-  let query = 'SELECT * FROM cars';
-  let params = [];
-
-  if (section) {
-    query += ' WHERE section = ?';
-    params.push(section);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
   }
-
-  query += ' ORDER BY created_at DESC';
-
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(rows);
-  });
 });
 
-app.get('/api/cars/:id', (req, res) => {
-  db.get('SELECT * FROM cars WHERE id = ?', [req.params.id], (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
+// ─── Public API Routes ────────────────────────────────────────────────────────
+
+app.get('/api/market-info', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM market_info LIMIT 1');
+    res.json(result.rows[0] || {});
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/owners', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM owners ORDER BY position');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/cars', async (req, res) => {
+  const { section } = req.query;
+  try {
+    let result;
+    if (section) {
+      result = await pool.query('SELECT * FROM cars WHERE section = $1 ORDER BY created_at DESC', [section]);
+    } else {
+      result = await pool.query('SELECT * FROM cars ORDER BY created_at DESC');
     }
-    if (!row) {
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/cars/:id', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM cars WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Car not found' });
     }
-    res.json(row);
-  });
-});
-
-// Admin routes - Market Info
-app.put('/api/admin/market-info', authenticateToken, (req, res) => {
-  const { title, address, hours } = req.body;
-
-  db.run(
-    'UPDATE market_info SET title = ?, address = ?, hours = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
-    [title, address, hours],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json({ message: 'Market info updated successfully' });
-    }
-  );
-});
-
-// Admin routes - Owners
-app.get('/api/admin/owners', authenticateToken, (req, res) => {
-  db.all('SELECT * FROM owners ORDER BY position', (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(rows);
-  });
-});
-
-app.put('/api/admin/owners/:id', authenticateToken, upload.single('image'), (req, res) => {
-  const { name, contact, address } = req.body;
-  let updateQuery = 'UPDATE owners SET name = ?, contact = ?, address = ?, updated_at = CURRENT_TIMESTAMP';
-  let params = [name, contact, address];
-
-  if (req.file) {
-    // Delete old image if exists
-    db.get('SELECT image_path FROM owners WHERE id = ?', [req.params.id], (err, owner) => {
-      if (owner && owner.image_path && !owner.image_path.startsWith('http') && owner.image_path !== 'shiva.jpg' && owner.image_path !== 'bhagu.jpg') {
-        const oldImagePath = path.join(__dirname, 'uploads', owner.image_path);
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
-      }
-    });
-
-    updateQuery += ', image_path = ?';
-    params.push('/uploads/' + req.file.filename);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
   }
+});
 
-  updateQuery += ' WHERE id = ?';
-  params.push(req.params.id);
+// ─── Admin Routes — Market Info ───────────────────────────────────────────────
 
-  db.run(updateQuery, params, function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
+app.put('/api/admin/market-info', authenticateToken, async (req, res) => {
+  const { title, address, hours } = req.body;
+  try {
+    await pool.query(
+      'UPDATE market_info SET title = $1, address = $2, hours = $3, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
+      [title, address, hours]
+    );
+    res.json({ message: 'Market info updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// ─── Admin Routes — Owners ────────────────────────────────────────────────────
+
+app.get('/api/admin/owners', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM owners ORDER BY position');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.put('/api/admin/owners/:id', authenticateToken, upload.single('image'), async (req, res) => {
+  const { name, contact, address } = req.body;
+  try {
+    if (req.file) {
+      // Delete old image if it's a local upload (not default)
+      const ownerResult = await pool.query('SELECT image_path FROM owners WHERE id = $1', [req.params.id]);
+      const owner = ownerResult.rows[0];
+      if (
+        owner && owner.image_path &&
+        !owner.image_path.startsWith('http') &&
+        owner.image_path !== 'shiva.jpg' &&
+        owner.image_path !== 'bhagu.jpg'
+      ) {
+        const oldImagePath = path.join(__dirname, 'uploads', owner.image_path);
+        if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
+      }
+
+      await pool.query(
+        'UPDATE owners SET name = $1, contact = $2, address = $3, image_path = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5',
+        [name, contact, address, '/uploads/' + req.file.filename, req.params.id]
+      );
+    } else {
+      await pool.query(
+        'UPDATE owners SET name = $1, contact = $2, address = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+        [name, contact, address, req.params.id]
+      );
     }
     res.json({ message: 'Owner updated successfully' });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-// Admin routes - Cars
-app.get('/api/admin/cars', authenticateToken, (req, res) => {
-  db.all('SELECT * FROM cars ORDER BY created_at DESC', (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(rows);
-  });
+// ─── Admin Routes — Cars ──────────────────────────────────────────────────────
+
+app.get('/api/admin/cars', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM cars ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.post('/api/admin/cars', authenticateToken, upload.single('image'), (req, res) => {
+app.post('/api/admin/cars', authenticateToken, upload.single('image'), async (req, res) => {
   const { title, description, price, posted_date, section } = req.body;
   const image_path = req.file ? '/uploads/' + req.file.filename : null;
 
@@ -334,80 +353,81 @@ app.post('/api/admin/cars', authenticateToken, upload.single('image'), (req, res
     return res.status(400).json({ error: 'Title and price are required' });
   }
 
-  db.run(
-    'INSERT INTO cars (title, description, price, image_path, posted_date, section) VALUES (?, ?, ?, ?, ?, ?)',
-    [title, description || '', price, image_path, posted_date || 'Just now', section || 'home'],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json({ message: 'Car created successfully', id: this.lastID });
-    }
-  );
+  try {
+    const result = await pool.query(
+      'INSERT INTO cars (title, description, price, image_path, posted_date, section) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [title, description || '', price, image_path, posted_date || 'Just now', section || 'home']
+    );
+    res.json({ message: 'Car created successfully', id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.put('/api/admin/cars/:id', authenticateToken, upload.single('image'), (req, res) => {
+app.put('/api/admin/cars/:id', authenticateToken, upload.single('image'), async (req, res) => {
   const { title, description, price, posted_date, section } = req.body;
-  let updateQuery = 'UPDATE cars SET title = ?, description = ?, price = ?, posted_date = ?, section = ?, updated_at = CURRENT_TIMESTAMP';
-  let params = [title, description || '', price, posted_date, section || 'home'];
 
-  if (req.file) {
-    // Delete old image if exists and is local
-    db.get('SELECT image_path FROM cars WHERE id = ?', [req.params.id], (err, car) => {
+  try {
+    if (req.file) {
+      // Delete old local image if present
+      const carResult = await pool.query('SELECT image_path FROM cars WHERE id = $1', [req.params.id]);
+      const car = carResult.rows[0];
       if (car && car.image_path && car.image_path.startsWith('/uploads/')) {
         const oldImagePath = path.join(__dirname, car.image_path);
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
+        if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
       }
-    });
 
-    updateQuery += ', image_path = ?';
-    params.push('/uploads/' + req.file.filename);
-  }
-
-  updateQuery += ' WHERE id = ?';
-  params.push(req.params.id);
-
-  db.run(updateQuery, params, function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
+      await pool.query(
+        'UPDATE cars SET title = $1, description = $2, price = $3, posted_date = $4, section = $5, image_path = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7',
+        [title, description || '', price, posted_date, section || 'home', '/uploads/' + req.file.filename, req.params.id]
+      );
+    } else {
+      await pool.query(
+        'UPDATE cars SET title = $1, description = $2, price = $3, posted_date = $4, section = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6',
+        [title, description || '', price, posted_date, section || 'home', req.params.id]
+      );
     }
     res.json({ message: 'Car updated successfully' });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.delete('/api/admin/cars/:id', authenticateToken, (req, res) => {
-  // Delete associated image
-  db.get('SELECT image_path FROM cars WHERE id = ?', [req.params.id], (err, car) => {
+app.delete('/api/admin/cars/:id', authenticateToken, async (req, res) => {
+  try {
+    // Delete associated local image
+    const carResult = await pool.query('SELECT image_path FROM cars WHERE id = $1', [req.params.id]);
+    const car = carResult.rows[0];
     if (car && car.image_path && car.image_path.startsWith('/uploads/')) {
       const imagePath = path.join(__dirname, car.image_path);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
     }
 
-    db.run('DELETE FROM cars WHERE id = ?', [req.params.id], function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json({ message: 'Car deleted successfully' });
-    });
-  });
+    await pool.query('DELETE FROM cars WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Car deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-// Serve admin panel
+// ─── Static Pages ─────────────────────────────────────────────────────────────
+
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// Serve index.html for root
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Admin panel: http://localhost:${PORT}/admin`);
+// ─── Start Server ─────────────────────────────────────────────────────────────
+
+initDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Admin panel: http://localhost:${PORT}/admin`);
+  });
 });
