@@ -2,15 +2,13 @@ const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Cloudinary config
 cloudinary.config({
@@ -19,19 +17,22 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Warn early if Cloudinary isn't configured
-if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+const cloudinaryReady =
+  !!process.env.CLOUDINARY_CLOUD_NAME &&
+  !!process.env.CLOUDINARY_API_KEY &&
+  !!process.env.CLOUDINARY_API_SECRET;
+
+if (!cloudinaryReady) {
   console.warn('[WARNING] Cloudinary env vars not set — image uploads will fail.');
 }
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.static(__dirname));  // serve index.html, admin.html, images from root
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.json({ limit: '10mb' }));   // allow base64 image payloads
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(__dirname));
 
-// PostgreSQL connection pool (uses DATABASE_URL from env)
+// PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('neon')
@@ -39,13 +40,12 @@ const pool = new Pool({
     : false,
 });
 
-// Lazy DB init — only runs once per cold start
+// Lazy DB init — runs once per cold start
 let dbInitialized = false;
 async function initDB() {
   if (dbInitialized) return;
   dbInitialized = true;
 
-  // Users table
   await pool.query(`CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
@@ -53,7 +53,6 @@ async function initDB() {
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // Owners table
   await pool.query(`CREATE TABLE IF NOT EXISTS owners (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -65,7 +64,6 @@ async function initDB() {
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // Market info table
   await pool.query(`CREATE TABLE IF NOT EXISTS market_info (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
@@ -75,7 +73,6 @@ async function initDB() {
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // Cars table
   await pool.query(`CREATE TABLE IF NOT EXISTS cars (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
@@ -105,12 +102,12 @@ async function initDB() {
       [
         'APNO Car Bazar - Main Market',
         'BIKANER Road, Panch bhai chok, Near Maharana partap school',
-        'Open 10:00 AM - 8:00 PM, Monday to Sunday'
+        'Open 10:00 AM - 8:00 PM, Monday to Sunday',
       ]
     );
   }
 
-  // Seed default left owner
+  // Seed default owners
   const leftOwner = await pool.query('SELECT id FROM owners WHERE position = $1', ['left']);
   if (leftOwner.rows.length === 0) {
     await pool.query(
@@ -119,7 +116,6 @@ async function initDB() {
     );
   }
 
-  // Seed default right owner
   const rightOwner = await pool.query('SELECT id FROM owners WHERE position = $1', ['right']);
   if (rightOwner.rows.length === 0) {
     await pool.query(
@@ -140,7 +136,7 @@ async function initDB() {
       { title: 'Mahindra XUV500 2017', description: 'Diesel • 89,000 km • Second Owner', price: '₹ 9.0 Lakh', image_path: 'https://images.unsplash.com/photo-1493238792000-8113da705763?q=80&w=1200&auto=format&fit=crop', posted_date: '1 week ago', section: 'all' },
       { title: 'Hyundai i20 2020', description: 'Petrol • 22,000 km • Single Owner', price: '₹ 7.9 Lakh', image_path: 'https://images.unsplash.com/photo-1619767886558-efdc259cde1a?q=80&w=1200&auto=format&fit=crop', posted_date: '4 days ago', section: 'all' },
       { title: 'Maruti Baleno 2019', description: 'Petrol • 39,000 km • Single Owner', price: '₹ 6.9 Lakh', image_path: 'https://images.unsplash.com/photo-1525609004556-c46c7d6cf023?q=80&w=1200&auto=format&fit=crop', posted_date: '6 days ago', section: 'all' },
-      { title: 'Kia Seltos 2021', description: 'Petrol • 19,000 km • Single Owner', price: '₹ 13.8 Lakh', image_path: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?q=80&w=1200&auto=format&fit=crop', posted_date: '2 days ago', section: 'all' }
+      { title: 'Kia Seltos 2021', description: 'Petrol • 19,000 km • Single Owner', price: '₹ 13.8 Lakh', image_path: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?q=80&w=1200&auto=format&fit=crop', posted_date: '2 days ago', section: 'all' },
     ];
     for (const car of defaultCars) {
       await pool.query(
@@ -149,42 +145,35 @@ async function initDB() {
       );
     }
   }
+
+  console.log('Database initialized');
 }
 
-// Middleware to ensure DB is ready on every request
+// Ensure DB is ready on every cold start
 app.use(async (req, res, next) => {
   try {
     await initDB();
     next();
   } catch (err) {
     console.error('DB init error:', err);
-    res.status(500).json({ error: 'Database initialization failed' });
+    res.status(500).json({ error: 'Database initialization failed: ' + err.message });
   }
 });
 
-// File upload — Cloudinary (persistent, works on Vercel)
-const cloudinaryStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
+// Helper: upload base64 image string to Cloudinary
+async function uploadToCloudinary(base64Data) {
+  if (!base64Data) return null;
+  if (!cloudinaryReady) {
+    throw new Error('Cloudinary is not configured. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET to Vercel environment variables.');
+  }
+  const result = await cloudinary.uploader.upload(base64Data, {
     folder: 'car-bazar',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
     transformation: [{ quality: 'auto', fetch_format: 'auto' }],
-  },
-});
+  });
+  return result.secure_url;
+}
 
-const upload = multer({
-  storage: cloudinaryStorage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (mimetype && extname) return cb(null, true);
-    cb(new Error('Only image files are allowed!'));
-  }
-});
-
-// Helper: delete image from Cloudinary by its stored URL
+// Helper: delete image from Cloudinary by stored URL
 async function deleteCloudinaryImage(imageUrl) {
   try {
     if (!imageUrl || !imageUrl.includes('cloudinary.com')) return;
@@ -196,21 +185,6 @@ async function deleteCloudinaryImage(imageUrl) {
     console.error('Cloudinary delete error:', err);
   }
 }
-
-// Safe upload wrapper — catches Cloudinary/multer errors and returns JSON
-// instead of crashing the serverless function (which causes "Connection error")
-const handleUpload = (field) => (req, res, next) => {
-  upload.single(field)(req, res, (err) => {
-    if (!err) return next();
-    if (err instanceof multer.MulterError) {
-      return res.status(400).json({ error: `Upload error: ${err.message}` });
-    }
-    console.error('Cloudinary upload error:', err);
-    return res.status(500).json({
-      error: err.message || 'Image upload failed. Ensure Cloudinary env vars are set on Vercel.'
-    });
-  });
-};
 
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
@@ -317,17 +291,23 @@ app.get('/api/admin/owners', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/admin/owners/:id', authenticateToken, handleUpload('image'), async (req, res) => {
-  const { name, contact, address } = req.body;
+// Accepts JSON body: { name, contact, address, imageData? }
+// imageData is a base64 data URL string (e.g. "data:image/jpeg;base64,...")
+app.put('/api/admin/owners/:id', authenticateToken, async (req, res) => {
+  const { name, contact, address, imageData } = req.body;
   try {
-    if (req.file) {
+    let image_path = null;
+    if (imageData) {
       // Delete old Cloudinary image
       const old = await pool.query('SELECT image_path FROM owners WHERE id = $1', [req.params.id]);
       if (old.rows[0]) await deleteCloudinaryImage(old.rows[0].image_path);
+      image_path = await uploadToCloudinary(imageData);
+    }
 
+    if (image_path) {
       await pool.query(
         'UPDATE owners SET name = $1, contact = $2, address = $3, image_path = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5',
-        [name, contact, address, req.file.path, req.params.id]
+        [name, contact, address, image_path, req.params.id]
       );
     } else {
       await pool.query(
@@ -337,8 +317,8 @@ app.put('/api/admin/owners/:id', authenticateToken, handleUpload('image'), async
     }
     res.json({ message: 'Owner updated successfully' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Database error' });
+    console.error('Owner update error:', err);
+    res.status(500).json({ error: err.message || 'Update failed' });
   }
 });
 
@@ -354,34 +334,39 @@ app.get('/api/admin/cars', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/admin/cars', authenticateToken, handleUpload('image'), async (req, res) => {
-  const { title, description, price, posted_date, section } = req.body;
-  // req.file.path is the Cloudinary URL when using CloudinaryStorage
-  const image_path = req.file ? req.file.path : null;
+// Accepts JSON body: { title, description, price, posted_date, section, imageData? }
+app.post('/api/admin/cars', authenticateToken, async (req, res) => {
+  const { title, description, price, posted_date, section, imageData } = req.body;
   if (!title || !price) return res.status(400).json({ error: 'Title and price are required' });
   try {
+    const image_path = imageData ? await uploadToCloudinary(imageData) : null;
     const result = await pool.query(
       'INSERT INTO cars (title, description, price, image_path, posted_date, section) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
       [title, description || '', price, image_path, posted_date || 'Just now', section || 'home']
     );
     res.json({ message: 'Car created successfully', id: result.rows[0].id });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Database error' });
+    console.error('Car create error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create car' });
   }
 });
 
-app.put('/api/admin/cars/:id', authenticateToken, handleUpload('image'), async (req, res) => {
-  const { title, description, price, posted_date, section } = req.body;
+// Accepts JSON body: { title, description, price, posted_date, section, imageData? }
+app.put('/api/admin/cars/:id', authenticateToken, async (req, res) => {
+  const { title, description, price, posted_date, section, imageData } = req.body;
   try {
-    if (req.file) {
+    let image_path = null;
+    if (imageData) {
       // Delete old Cloudinary image
       const old = await pool.query('SELECT image_path FROM cars WHERE id = $1', [req.params.id]);
       if (old.rows[0]) await deleteCloudinaryImage(old.rows[0].image_path);
+      image_path = await uploadToCloudinary(imageData);
+    }
 
+    if (image_path) {
       await pool.query(
         'UPDATE cars SET title = $1, description = $2, price = $3, posted_date = $4, section = $5, image_path = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7',
-        [title, description || '', price, posted_date, section || 'home', req.file.path, req.params.id]
+        [title, description || '', price, posted_date, section || 'home', image_path, req.params.id]
       );
     } else {
       await pool.query(
@@ -391,17 +376,15 @@ app.put('/api/admin/cars/:id', authenticateToken, handleUpload('image'), async (
     }
     res.json({ message: 'Car updated successfully' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Database error' });
+    console.error('Car update error:', err);
+    res.status(500).json({ error: err.message || 'Update failed' });
   }
 });
 
 app.delete('/api/admin/cars/:id', authenticateToken, async (req, res) => {
   try {
-    // Delete Cloudinary image first
     const carResult = await pool.query('SELECT image_path FROM cars WHERE id = $1', [req.params.id]);
     if (carResult.rows[0]) await deleteCloudinaryImage(carResult.rows[0].image_path);
-
     await pool.query('DELETE FROM cars WHERE id = $1', [req.params.id]);
     res.json({ message: 'Car deleted successfully' });
   } catch (err) {
@@ -412,23 +395,26 @@ app.delete('/api/admin/cars/:id', authenticateToken, async (req, res) => {
 
 // ─── Static Pages ─────────────────────────────────────────────────────────────
 
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+
+// ─── Global error handler ─────────────────────────────────────────────────────
+
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+// ─── Start (local dev only) ───────────────────────────────────────────────────
 
-// ─── Local dev server (not used on Vercel) ────────────────────────────────────
-
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Admin panel: http://localhost:${PORT}/admin`);
+  initDB().then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Admin panel: http://localhost:${PORT}/admin`);
+    });
   });
 }
 
-// Export for Vercel serverless
 module.exports = app;
